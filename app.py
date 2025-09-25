@@ -47,13 +47,45 @@ with st.sidebar:
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded Image", width=200)
+
         ocr_text = extract_text_from_image(image)
         if ocr_text:
-            st.text_area("Extracted Text", ocr_text, height=150)
-            if st.button("➡️ Send OCR Text to Chat"):
-                chat = st.session_state.history[st.session_state.current_chat]
-                chat["messages"].append({"role": "user", "content": ocr_text})
-                st.rerun()
+            st.success("✅ Text extracted from image and sent to chat automatically.")
+
+            # Append OCR text as user message
+            chat = st.session_state.history[st.session_state.current_chat]
+            chat["messages"].append({"role": "user", "content": f"OCR Extracted Text:\n{ocr_text}"})
+
+            # Trigger assistant reply immediately
+            with st.chat_message("assistant"):
+                placeholder, full_text = st.empty(), ""
+                try:
+                    if st.session_state.model_choice == "Gemini API" and api_key:
+                        model = genai.GenerativeModel(GEMINI_MODEL)
+                        stream = model.generate_content(
+                            [m["content"] for m in chat["messages"] if m["role"] in ("system", "user")],
+                            stream=True,
+                        )
+                        for chunk in stream:
+                            if chunk.text:
+                                full_text += chunk.text
+                                placeholder.markdown(full_text)
+                    else:
+                        stream = ollama.chat(
+                            model=OLLAMA_MODEL,
+                            messages=chat["messages"],
+                            stream=True
+                        )
+                        for chunk in stream:
+                            if "message" in chunk and "content" in chunk["message"]:
+                                c = chunk["message"]["content"]
+                                full_text += c
+                                placeholder.markdown(full_text)
+                except Exception as e:
+                    full_text = f"❌ Error: {e}"
+                    placeholder.error(full_text)
+
+                chat["messages"].append({"role": "assistant", "content": full_text})
 
     st.markdown("## 💾 Chat History")
     for cid, chat in st.session_state.history.items():
@@ -136,4 +168,3 @@ if st.session_state.current_chat:
         )
 else:
     st.info("Start a new chat from the sidebar ➕")
-
