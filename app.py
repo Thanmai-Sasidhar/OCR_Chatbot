@@ -20,7 +20,7 @@ if not api_key:
 else:
     genai.configure(api_key=api_key)
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-1.5-flash-latest"
 OLLAMA_MODEL = "llama3.1:8b"
 
 # -------------------- Initialize Session --------------------
