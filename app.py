@@ -5,15 +5,12 @@ import google.generativeai as genai
 import ollama
 from PIL import Image
 from utils import extract_text_from_image, init_session_state
+from db import session, ChatHistory  # <-- added for database
 
 # -------------------- Page Config --------------------
-st.set_page_config(
-    page_title="Gemini + Ollama Chat",
-    page_icon="🤖",
-    layout="centered"
-)
+st.set_page_config(page_title="Gemini + Ollama Chat", page_icon="🤖", layout="centered")
 
-# -------------------- API Config (Hidden Key) --------------------
+# -------------------- API Config --------------------
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     st.error("❌ GEMINI_API_KEY not found in environment variables.")
@@ -29,9 +26,7 @@ init_session_state()
 # -------------------- Sidebar --------------------
 with st.sidebar:
     st.markdown("## 🤖 Choose Model")
-    st.session_state.model_choice = st.radio(
-        "Select Model:", ["Gemini API", "Ollama Local"]
-    )
+    st.session_state.model_choice = st.radio("Select Model:", ["Gemini API", "Ollama Local"])
 
     if st.button("➕ New Chat", use_container_width=True):
         cid = f"chat_{st.session_state.chat_counter}"
@@ -51,12 +46,13 @@ with st.sidebar:
         ocr_text = extract_text_from_image(image)
         if ocr_text:
             st.success("✅ Text extracted from image and sent to chat automatically.")
-
-            # Append OCR text as user message
             chat = st.session_state.history[st.session_state.current_chat]
             chat["messages"].append({"role": "user", "content": f"OCR Extracted Text:\n{ocr_text}"})
 
-            # Trigger assistant reply immediately
+            # Save to DB
+            session.add(ChatHistory(chat_name=chat["name"], role="user", content=ocr_text))
+            session.commit()
+
             with st.chat_message("assistant"):
                 placeholder, full_text = st.empty(), ""
                 try:
@@ -86,6 +82,9 @@ with st.sidebar:
                     placeholder.error(full_text)
 
                 chat["messages"].append({"role": "assistant", "content": full_text})
+                # Save assistant reply
+                session.add(ChatHistory(chat_name=chat["name"], role="assistant", content=full_text))
+                session.commit()
 
     st.markdown("## 💾 Chat History")
     for cid, chat in st.session_state.history.items():
@@ -124,6 +123,10 @@ if st.session_state.current_chat:
             chat["name"] = prompt[:40] + ("..." if len(prompt) > 40 else "")
         chat["messages"].append({"role": "user", "content": prompt})
 
+        # Save user message to DB
+        session.add(ChatHistory(chat_name=chat["name"], role="user", content=prompt))
+        session.commit()
+
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -157,9 +160,15 @@ if st.session_state.current_chat:
 
             chat["messages"].append({"role": "assistant", "content": full_text})
 
+            # Save assistant reply
+            session.add(ChatHistory(chat_name=chat["name"], role="assistant", content=full_text))
+            session.commit()
+
     if len(chat["messages"]) > 1:
-        txt = "".join([f"{m['role'].upper()}: {m['content']}\n\n"
-                       for m in chat["messages"] if m["role"] != "system"])
+        txt = "".join([
+            f"{m['role'].upper()}: {m['content']}\n\n"
+            for m in chat["messages"] if m["role"] != "system"
+        ])
         st.download_button(
             "📤 Share Current Chat",
             data=io.BytesIO(txt.encode()),
