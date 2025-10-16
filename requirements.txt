@@ -4,5 +4,3 @@ numpy
 pillow 
 opencv-python-headless 
 pytesseract 
-SQLAlchemy 
-streamlit-authenticator
